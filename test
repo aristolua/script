@@ -1,0 +1,524 @@
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "aristo.lua" ,
+    SubTitle = "by ad_f",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true, -- The blur may be detectable, setting this to false disables blur entirely
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.K -- Used when theres no MinimizeKeybind
+})
+
+-- Fluent provides Lucide Icons, they are optional
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "" }),
+    Mission = Window:AddTab({ Title = "Missions", Icon = "" }),
+    Webhook = Window:AddTab({ Title = "Webhook", Icon = "" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "" })
+}
+
+Window:SelectTab(Tabs.Main)
+
+-- ================ Settings ================
+
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInput = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+-- إعدادات
+local flying = false
+local isKilling = false
+local flyHeight = 120
+local flySpeed = 60
+
+
+-- ================ Auto kill titans ================
+
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInput = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+-- إعدادات قابلة للتعديل
+local flying = false
+local isKilling = false
+local flyHeight = 120
+local flySpeed = 60
+
+-- مكان لحفظ BodyPosition
+local bp
+
+-- إيجاد أقرب نيب
+local function getClosestNape()
+    local closest, dist = nil, math.huge
+    for _, model in ipairs(workspace.Titans:GetChildren()) do
+        local hitboxes = model:FindFirstChild("Hitboxes")
+        if hitboxes then
+            local hit = hitboxes:FindFirstChild("Hit")
+            if hit then
+                local nape = hit:FindFirstChild("Nape")
+                if nape and model:FindFirstChild("Humanoid") and model.Humanoid.Health > 0 then
+                    local d = (hrp.Position - nape.Position).Magnitude
+                    if d < dist then
+                        closest = nape
+                        dist = d
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- النزلة والضربة الدقيقة
+local function diveAndKill(nape)
+    isKilling = true
+
+    local down = nape.Position + Vector3.new(0, 0.5, -1.5)
+    local up = down + Vector3.new(0, flyHeight, 0)
+
+    hrp.CFrame = CFrame.lookAt(down, nape.Position)
+
+    local lock = Instance.new("BodyPosition")
+    lock.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    lock.P = 40000
+    lock.D = 1000
+    lock.Position = down
+    lock.Name = "KillLock"
+    lock.Parent = hrp
+
+    local maxWait = 1
+    local timer = 0
+    while (hrp.Position - down).Magnitude > 1.5 and timer < maxWait do
+        wait(0.01)
+        timer += 0.01
+    end
+
+    -- ضغطة وهمية
+    VirtualInput:SendMouseButtonEvent(500, 500, 0, true, game, 0)
+    wait(0.005)
+    VirtualInput:SendMouseButtonEvent(500, 500, 0, false, game, 0)
+    wait(0.2)
+
+    -- الضربة الحقيقية
+    VirtualInput:SendMouseButtonEvent(500, 500, 0, true, game, 0)
+    wait(0.005)
+    VirtualInput:SendMouseButtonEvent(500, 500, 0, false, game, 0)
+
+    wait(0.1)
+    lock:Destroy()
+    hrp.CFrame = CFrame.new(up)
+
+    isKilling = false
+end
+
+-- حلقة الحركة والانقضاض
+RunService.Heartbeat:Connect(function()
+    if flying and not isKilling then
+        local nape = getClosestNape()
+        if nape then
+            local flyPos = nape.Position + Vector3.new(0, flyHeight, 0)
+            local dir = (flyPos - hrp.Position).Unit
+            local goal = hrp.Position + dir * flySpeed
+            if bp then
+                bp.Position = goal
+            end
+
+            local delta = hrp.Position - nape.Position
+            local horizontalDist = Vector3.new(delta.X, 0, delta.Z).Magnitude
+            if horizontalDist < 8 then
+                diveAndKill(nape)
+            end
+        elseif bp then
+            bp.Position = hrp.Position
+        end
+    end
+end)
+
+-- 🟢 Toggle لتشغيل/إيقاف Auto Kill
+local Toggle = Tabs.Main:AddToggle("AutoKillToggle", {
+    Title = "Auto Kill Titans",
+    Default = false,
+    Callback = function(state)
+        flying = state
+        if state then
+            -- إنشاء BodyPosition عند التفعيل
+            bp = Instance.new("BodyPosition")
+            bp.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            bp.P = 40000
+            bp.D = 1000
+            bp.Position = hrp.Position
+            bp.Name = "FlyControl"
+            bp.Parent = hrp
+        else
+            if bp and bp.Parent then
+                bp:Destroy()
+                bp = nil
+            end
+        end
+    end
+})
+
+-- 🔼 Slider للتحكم في الارتفاع
+Tabs.Main:AddSlider("FlyHeightSlider", {
+    Title = "Fly Height",
+    Default = 120,
+    Min = 50,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(value)
+        flyHeight = value
+    end
+})
+
+-- 🚀 Slider للتحكم في السرعة
+Tabs.Main:AddSlider("FlySpeedSlider", {
+    Title = "Fly Speed",
+    Default = 60,
+    Min = 10,
+    Max = 150,
+    Rounding = 0,
+    Callback = function(value)
+        flySpeed = value
+    end
+})
+
+-- ================ Auto Reload ================
+
+local autoReloadEnabled = false
+local gasLabel, bladesLabel, stationPart
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VIM = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+-- 🔧 دالة لتحميل عناصر HUD بأمان
+local function safeGetHUD()
+    local success, gui = pcall(function()
+        return player:WaitForChild("PlayerGui"):WaitForChild("Interface")
+    end)
+    if not success or not gui then return false end
+
+    local gas = gui:FindFirstChild("HUD") and gui.HUD.Main.Top.Gas:FindFirstChild("Percentage")
+    local blades = gui:FindFirstChild("HUD") and gui.HUD.Main.Top.Blades:FindFirstChild("Sets")
+
+    if gas and blades then
+        gasLabel = gas
+        bladesLabel = blades
+        return true
+    end
+
+    return false
+end
+
+-- 🔧 العثور على محطة التعبئة
+local function ensureStation()
+    if stationPart then return end
+    local uncli = workspace:FindFirstChild("Unclimbable")
+    local reloadsFolder = uncli and uncli:FindFirstChild("Reloads")
+    if not reloadsFolder then return end
+
+    local tanks = reloadsFolder:FindFirstChild("GasTanks")
+    if tanks then
+        for _, model in ipairs(tanks:GetChildren()) do
+            if model:IsA("Model") then
+                stationPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+                if stationPart then break end
+            end
+        end
+    end
+
+    if not stationPart then
+        local refill = reloadsFolder:FindFirstChild("Refill")
+        if refill then
+            stationPart = refill:FindFirstChildWhichIsA("BasePart")
+        end
+    end
+end
+
+-- 🔧 تنفيذ التعبئة
+local function doRefill()
+    if not stationPart or not hrp then return end
+    local oldCamType = cam.CameraType
+    local oldSubject = cam.CameraSubject
+    local oldCamCFrame = cam.CFrame
+
+    cam.CameraType = Enum.CameraType.Scriptable
+    cam.CFrame = oldCamCFrame
+
+    local originalPos = hrp.CFrame
+    hrp.CFrame = stationPart.CFrame + Vector3.new(0, 3, 0)
+    RunService.RenderStepped:Wait()
+
+    VIM:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+    task.wait(0.05)
+    VIM:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+    task.wait(0.05)
+
+    hrp.CFrame = originalPos
+    RunService.RenderStepped:Wait()
+
+    cam.CameraType = oldCamType
+    cam.CameraSubject = oldSubject
+    cam.CFrame = oldCamCFrame
+
+    print("[AutoReload] ✅ Refill done.")
+end
+
+-- ✅ التوقل داخل تبويب Main
+Tabs.Main:AddToggle("AutoReloadToggle", {
+    Title = "Auto Reload",
+    Default = false,
+    Callback = function(state)
+        autoReloadEnabled = state
+        print("[AutoReload] Enabled:", state)
+    end
+})
+
+-- ✅ الحلقة التي تراقب الغاز والسيوف
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if autoReloadEnabled then
+            if not gasLabel or not bladesLabel then
+                safeGetHUD()
+            end
+            ensureStation()
+            local gas = tonumber(gasLabel and gasLabel.Text:match("(%d+)") or "100")
+            local blades = tonumber(bladesLabel and bladesLabel.Text:match("(%d+)") or "3")
+            if gas <= 0 or blades <= 0 then
+                doRefill()
+                task.wait(2)
+            end
+        end
+    end
+end)
+
+
+-- ================ Auto Retry ================
+
+
+local VIM = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local player = game.Players.LocalPlayer
+
+-- المسارات
+local interface = player.PlayerGui:WaitForChild("Interface")
+local rewards = interface:WaitForChild("Rewards")
+local rewardsMain = rewards:WaitForChild("Main")
+local retryBtn = rewardsMain:WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Buttons"):WaitForChild("Retry")
+
+-- حالة التفعيل
+local autoRetryEnabled = false
+
+-- التحقق قبل الضغط
+local function shouldClickRetry()
+	return rewards.Visible
+		and rewardsMain.Visible
+		and retryBtn.Visible
+		and retryBtn.AbsoluteSize.Magnitude > 10
+end
+
+-- تنفيذ الضغط الحقيقي
+local function clickRetry()
+	local pos = retryBtn.AbsolutePosition
+	local size = retryBtn.AbsoluteSize
+	local inset = GuiService:GetGuiInset()
+
+	local x = pos.X + size.X / 2
+	local y = pos.Y + size.Y / 2 + inset.Y
+
+	VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+	task.wait(0.05)
+	VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+
+	print("✅ Retry Clicked")
+end
+
+-- تكرار التحقق والتفعيل
+task.spawn(function()
+	while true do
+		if autoRetryEnabled and shouldClickRetry() then
+			clickRetry()
+			task.wait(2.5)
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- ربط مع التوجل
+local Toggle = Tabs.Main:AddToggle("AutoRetryToggle", {
+    Title = "Auto Retry",
+    Default = false,
+    Callback = function(state)
+        autoRetryEnabled = state
+    end
+})
+
+
+
+-- ================ Auto Grap Escape ================
+
+
+local virtualInput = game:GetService("VirtualInputManager")
+local player = game.Players.LocalPlayer
+local gui = player:WaitForChild("PlayerGui")
+
+local escapeOn = false
+local escapeConnection
+
+local Toggle = Tabs.Main:AddToggle("AutoGrapEscapeToggle", 
+{
+    Title = "Auto Grap Escape", 
+    Default = false,
+    Callback = function(state)
+        escapeOn = state
+
+        -- إذا اشتغل
+        if escapeOn then
+            escapeConnection = task.spawn(function()
+                while escapeOn do
+                    local buttons = gui:FindFirstChild("Interface") and gui.Interface:FindFirstChild("Buttons")
+                    if buttons then
+                        for _, obj in pairs(buttons:GetChildren()) do
+                            if obj:FindFirstChild("Main") and obj.Main:FindFirstChild("Key") then
+                                local keyText = obj.Main.Key.Text
+                                if keyText and keyText:match("^[WASD]$") then
+                                    local keyEnum = Enum.KeyCode[keyText]
+                                    virtualInput:SendKeyEvent(true, keyEnum, false, game)
+                                    wait(0.05)
+                                    virtualInput:SendKeyEvent(false, keyEnum, false, game)
+                                end
+                            end
+                        end
+                    end
+                    wait(0.1)
+                end
+            end)
+        else
+            -- إذا طفيته نوقف التكرار
+            escapeOn = false
+        end
+    end 
+})
+
+
+-- ================ Webhook ================
+
+
+local webhookURL = ""
+local Input = Tabs.Webhook:AddInput("WebhookInput", {
+    Title = "Webhook URL",
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Finished = true,
+    Callback = function(Value)
+        webhookURL = Value
+        print("[Aristo.lua] ✅ Webhook set to:", webhookURL)
+    end
+})
+
+local function getItems()
+	local gui = player:FindFirstChild("PlayerGui")
+	local interface = gui and gui:FindFirstChild("Interface")
+	local rewards = interface and interface:FindFirstChild("Rewards")
+	local main = rewards and rewards:FindFirstChild("Main")
+	local info = main and main:FindFirstChild("Info")
+	local infoMain = info and info:FindFirstChild("Main")
+	local items = infoMain and infoMain:FindFirstChild("Items")
+	return items
+end
+
+local function getQuantity(items, name)
+	local item = items:FindFirstChild(name)
+	if item and item:FindFirstChild("Main") and item.Main:FindFirstChild("Inner") and item.Main.Inner:FindFirstChild("Quantity") then
+		return item.Main.Inner.Quantity.Text
+	end
+	return "0"
+end
+
+local lastXP = nil
+local sentForThisXP = false
+
+task.spawn(function()
+	while true do
+		local items = getItems()
+		if items and webhookURL ~= "" then
+			local xp = getQuantity(items, "XP")
+			if xp ~= lastXP and tonumber(xp) > 0 then
+				if not sentForThisXP then
+					lastXP = xp
+					sentForThisXP = true
+
+					local gold = getQuantity(items, "Gold")
+					local bp_xp = getQuantity(items, "BP_XP")
+					local easter = getQuantity(items, "Easter_Tokens")
+					local common = getQuantity(items, "Common_Perk")
+					local secret = getQuantity(items, "Secret_Perk")
+					local epic = getQuantity(items, "Epic_Perk")
+					local prestige = getQuantity(items, "Prestige_Scroll")
+
+					local data = {
+						content = "@everyone",
+						embeds = {{
+							title = "Mission Complete",
+							fields = {
+								{name = "Account", value = player.Name, inline = true},
+								{name = "Rewards", value = string.format(
+									"- %s XP\n- %s Gold\n- %s BP XP\n- %s Easter Tokens\n- %s Common Perk\n- %s Secret Perk\n- %s Epic Perk\n- %s Prestige Scroll",
+									xp, gold, bp_xp, easter, common, secret, epic, prestige
+								)}
+							},
+							footer = {text = "Aristo.lua"}
+						}}
+					}
+
+					print("[Aristo.lua] ✅ Sending webhook to:", webhookURL)
+					request({
+						Url = webhookURL,
+						Method = "POST",
+						Headers = {
+							["Content-Type"] = "application/json"
+						},
+						Body = HttpService:JSONEncode(data)
+					})
+				end
+			end
+		end
+
+		if not items then
+			sentForThisXP = false
+			lastXP = nil
+		end
+		wait(1)
+	end
+end)
+
+
+-- ================ Save Manager ================
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
