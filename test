@@ -15,12 +15,17 @@ local Window = Fluent:CreateWindow({
 -- Fluent provides Lucide Icons, they are optional
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "" }),
-    Mission = Window:AddTab({ Title = "Missions", Icon = "" }),
     Webhook = Window:AddTab({ Title = "Webhook", Icon = "" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "" })
 }
 
 Window:SelectTab(Tabs.Main)
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
 
 -- ================ Settings ================
 
@@ -199,6 +204,7 @@ Tabs.Main:AddSlider("FlySpeedSlider", {
     end
 })
 
+
 -- ================ Auto Reload ================
 
 local autoReloadEnabled = false
@@ -314,68 +320,6 @@ task.spawn(function()
         end
     end
 end)
-
-
--- ================ Auto Retry ================
-
-
-local VIM = game:GetService("VirtualInputManager")
-local GuiService = game:GetService("GuiService")
-local player = game.Players.LocalPlayer
-
--- المسارات
-local interface = player.PlayerGui:WaitForChild("Interface")
-local rewards = interface:WaitForChild("Rewards")
-local rewardsMain = rewards:WaitForChild("Main")
-local retryBtn = rewardsMain:WaitForChild("Info"):WaitForChild("Main"):WaitForChild("Buttons"):WaitForChild("Retry")
-
--- حالة التفعيل
-local autoRetryEnabled = false
-
--- التحقق قبل الضغط
-local function shouldClickRetry()
-	return rewards.Visible
-		and rewardsMain.Visible
-		and retryBtn.Visible
-		and retryBtn.AbsoluteSize.Magnitude > 10
-end
-
--- تنفيذ الضغط الحقيقي
-local function clickRetry()
-	local pos = retryBtn.AbsolutePosition
-	local size = retryBtn.AbsoluteSize
-	local inset = GuiService:GetGuiInset()
-
-	local x = pos.X + size.X / 2
-	local y = pos.Y + size.Y / 2 + inset.Y
-
-	VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-	task.wait(0.05)
-	VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
-
-	print("✅ Retry Clicked")
-end
-
--- تكرار التحقق والتفعيل
-task.spawn(function()
-	while true do
-		if autoRetryEnabled and shouldClickRetry() then
-			clickRetry()
-			task.wait(2.5)
-		end
-		task.wait(0.5)
-	end
-end)
-
--- ربط مع التوجل
-local Toggle = Tabs.Main:AddToggle("AutoRetryToggle", {
-    Title = "Auto Retry",
-    Default = false,
-    Callback = function(state)
-        autoRetryEnabled = state
-    end
-})
-
 
 
 -- ================ Auto Grap Escape ================
@@ -513,12 +457,3 @@ task.spawn(function()
 		wait(1)
 	end
 end)
-
-
--- ================ Save Manager ================
-
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
